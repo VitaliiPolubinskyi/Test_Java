@@ -1,0 +1,180 @@
+import lombok.Builder;
+import lombok.Data;
+
+import java.time.Instant;
+import java.util.Collections;
+import java.util.List;
+import java.util.Optional;
+import java.util.Objects;
+import java.util.UUID;
+import java.util.stream.Collectors;
+import java.util.ArrayList;
+
+/**
+ * For implement this task focus on clear code, and make this solution as simple readable as possible
+ * Don't worry about performance, concurrency, etc
+ * You can use in Memory collection for sore data
+ * <p>
+ * Please, don't change class name, and signature for methods save, search, findById
+ * Implementations should be in a single class
+ * This class could be auto tested
+ */
+public class DocumentManager {
+
+    private List<Author> authorList = new ArrayList<Author>();
+    private List<Document> documentList = new ArrayList<Document>();
+
+
+    public void setAuthorId(List<Author> authorList, Author author) {
+        Author newAuthor = Author.builder()
+                .id(UUID.randomUUID().toString())
+                .name(author.getName())
+                .build();
+        authorList.add(newAuthor);
+        author.setId(newAuthor.getId());
+    }
+
+    public void checkingAuthor(List<Author> authorList, Author author) {
+        Optional<Author> existingAuthor = authorList.stream()
+                .filter(a -> Objects.equals(a.getName(), author.getName()))
+                .findFirst();
+        if (existingAuthor.isPresent()) {
+            author.setId(existingAuthor.get().getId());
+        } else {
+            setAuthorId(authorList, author);
+        }
+    }
+
+    public void addingDocument(List<Document> documentList, List<Author> authorList, Document document, Author author) {
+
+    }
+
+    /**
+     * Implementation of this method should upsert the document to your storage
+     * And generate unique id if it does not exist, don't change [created] field
+     *
+     * @param document - document content and author data
+     * @return saved document
+     */
+
+    // I supposed that the only unique attribute of the document
+    // (besides ID, which is auto-generated for Document and Author both and not provided initially)
+    // is a combination of two fields: title and author.
+    // Hence, if I have the same title and author info after checking,
+    // the required document info (content) will be replaced.
+    // On the other hand, a new document will be created.
+    public Document save(Document document) {
+
+        if (document == null) {
+            throw new IllegalArgumentException();
+        }
+
+        Author author = document.getAuthor();
+        if (author == null) {
+            throw new IllegalArgumentException();
+        }
+
+        String title = document.getTitle();
+        checkingAuthor(authorList, author);
+        
+            for (int i = 0; i < documentList.size(); i++) {
+                Document existingDocument = documentList.get(i);
+                if (Objects.equals(existingDocument.getTitle(), title) && 
+                        (existingDocument.getAuthor() != null && 
+                        Objects.equals(existingDocument.getAuthor().getName(), author.getName()))) {
+                    existingDocument.setContent(document.getContent());
+                    return existingDocument;
+                }
+            }
+            
+        document.setId(UUID.randomUUID().toString());
+        document.setAuthor(author);
+        documentList.add(document);
+        
+        return document;
+    }
+
+
+    /**
+     * Implementation this method should find documents which match with request
+     *
+     * @param request - search request, each field could be null
+     * @return list matched documents
+     */
+    public List<Document> search(SearchRequest request) {
+
+        return documentList.stream()
+                .filter(document ->
+                        Optional.ofNullable(request.getTitlePrefixes())
+                                .map(titlePrefixes -> titlePrefixes.stream()
+                                        .anyMatch(titlePrefix ->
+                                                Optional.ofNullable(document.getTitle()).orElse("").startsWith(titlePrefix)))
+                                .orElse(true))
+                .filter(document ->
+                        Optional.ofNullable(request.getContainsContents())
+                                .map(contents -> contents.stream()
+                                        .anyMatch(content ->
+                                                Optional.ofNullable(document.getContent()).orElse("").contains(content)))
+                                .orElse(true))
+                .filter(document ->
+                        Optional.ofNullable(request.getAuthorIds())
+                                .map(authorIds -> authorIds.stream()
+                                        .anyMatch(authorId ->
+                                                Optional.ofNullable(document.getAuthor())
+                                                        .map(author -> author.getId())
+                                                        .orElse("")
+                                                        .equals(authorId)))
+                                .orElse(true))
+                .filter(document ->
+                        Optional.ofNullable(request.getCreatedFrom())
+                                .map(createdFrom ->
+                                        document.getCreated() != null && !document.getCreated().isBefore(createdFrom))
+                                .orElse(true))
+                .filter(document ->
+                        Optional.ofNullable(request.getCreatedTo())
+                                .map(createdTo ->
+                                        document.getCreated() != null && !document.getCreated().isAfter(createdTo))
+                                .orElse(true))
+                .collect(Collectors.toList());
+    }
+
+    /**
+     * Implementation this method should find document by id
+     *
+     * @param id - document id
+     * @return optional document
+     */
+    public Optional<Document> findById(String id) {
+
+        return documentList.stream()
+                .filter(document -> Objects.equals(document.getId(), id))
+                .findFirst();
+    }
+
+    @Data
+    @Builder
+    public static class SearchRequest {
+        private List<String> titlePrefixes;
+        private List<String> containsContents;
+        private List<String> authorIds;
+        private Instant createdFrom;
+        private Instant createdTo;
+    }
+
+    @Data
+    @Builder
+    public static class Document {
+        private String id;
+        private String title;
+        private String content;
+        private Author author;
+        private Instant created;
+    }
+
+    @Data
+    @Builder
+    public static class Author {
+        private String id;
+        private String name;
+    }
+}
